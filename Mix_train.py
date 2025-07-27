@@ -5,7 +5,7 @@ from  torch.utils.data import Dataset, DataLoader #数据加载
 from torchvision import datasets,transforms #数据集和数据变换
 from tqdm import  tqdm #训练进度条
 import os
-from Mix_model250 import EEGTransformerModel
+from Mix_control_model250 import EEGTransformerModel
 import numpy as np
 
 
@@ -235,7 +235,7 @@ def test():
 
 
 if __name__ == "__main__":
-    # main()
+    main()
 
     # #pcc 测试
     # x = torch.randn(128, 6)
@@ -245,5 +245,5 @@ if __name__ == "__main__":
     # print(result)
 
     # val测试
-    test()
+    # test()
 

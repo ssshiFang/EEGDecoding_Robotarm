@@ -81,6 +81,8 @@ def bandpass_filter(data, lowcut, highcut, fs, order=4):
         print(f"[滤波失败] padlen={padlen}, len={len(data)}，错误信息：{e}")
         return data
 
+
+
 def downsample_signal(data, original_fs, target_fs):
     """
     使用抗混叠滤波器进行下采样。
@@ -227,7 +229,6 @@ def eeg_process(raw_data, channel_names):
     # 1.IIR滤波
     raw.filter(0.1, 40., method='iir')
 
-
     # 2.common average referencing (CAR)
     raw.set_eeg_reference('average', projection=False)  # 不用投影矩阵，直接应用 CAR
 
@@ -330,9 +331,9 @@ def trials_to_pickle(new_trials, file_path='all_trials.pkl'):
     print(f"当前文件中共保存 {len(trials)} 个 trial")
 
 
-def save_all(save_path_data, have_emg=False):
-    data_dir = 'D:/MyFolder/Msc_EEG/data7'
-    file_list = sorted([f for f in os.listdir(data_dir) if f.startswith('WS_P7_S') and f.endswith('.mat')])
+def save_all(save_path_data, have_emg=False, participant=1):
+    data_dir = f'D:/MyFolder/Msc_EEG/data{participant}'
+    file_list = sorted([f for f in os.listdir(data_dir) if f.startswith(f'WS_P{participant}_S') and f.endswith('.mat')])
 
     for file_name in file_list:
         file_path = os.path.join(data_dir, file_name)
@@ -351,7 +352,7 @@ def save_all(save_path_data, have_emg=False):
         trials_to_pickle(new_trials, file_path=save_path_data)
 
 
-def split_trials_fixed(filepath, val_num=30, test_num=30, seed=42):
+def split_trials_fixed(filepath, val_num=60, test_num=60, train_num=300, seed=42):
     # 1. 加载数据
     with open(filepath, 'rb') as f:
         trials = pickle.load(f)
@@ -363,7 +364,7 @@ def split_trials_fixed(filepath, val_num=30, test_num=30, seed=42):
     # 3. 划分
     val_trials = trials[:val_num]
     test_trials = trials[val_num:val_num + test_num]
-    train_trials = trials[val_num + test_num:]
+    train_trials = trials[val_num + test_num:val_num + test_num + train_num]
 
     print(f"划分结果：Train: {len(train_trials)}, Val: {len(val_trials)}, Test: {len(test_trials)}")
 
@@ -516,7 +517,7 @@ def main():
 
     have_emg=True
 
-    save_all(save_path_data=save_path_data, have_emg=have_emg)  # 将所有实验保存为pkl文件
+    # save_all(save_path_data=save_path_data, have_emg=have_emg, participant=9)  # 将所有实验保存为pkl文件
 
     train_trials, val_trials, test_trials=split_trials_fixed(save_path_data)
 

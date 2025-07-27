@@ -202,6 +202,33 @@ class Embedding(nn.Module):
 
 
 
+class ModalityFusion(nn.Module):
+    def __init__(self, dropout_eeg=0.3, dropout_emg=0.1):
+        super().__init__()
+
+        self.dropout_eeg = nn.Dropout(dropout_eeg)
+        self.dropout_emg = nn.Dropout(dropout_emg)
+
+        # 可学习的模态权重参数（初始为1.0）
+        self.eeg_weight = nn.Parameter(torch.tensor(1.0))
+        self.emg_weight = nn.Parameter(torch.tensor(1.0))
+
+    def forward(self, eeg, emg):
+        eeg = self.dropout_eeg(eeg)
+        emg = self.dropout_emg(emg)
+
+        # 归一化模态权重（Softmax）
+        weights = torch.stack([self.eeg_weight, self.emg_weight], dim=0)
+        weights = torch.softmax(weights, dim=0)
+        eeg_w, emg_w = weights[0], weights[1]
+
+
+        eeg, emg = eeg_w * eeg , emg_w * emg
+
+        return eeg, emg
+
+
+
 class Muti_Attention(nn.Module):
     def __init__(self,
                  dim, #输入的token维度
@@ -246,7 +273,7 @@ class Muti_Attention(nn.Module):
         return x
 
 class Connected_layer(nn.Module):
-    def __init__(self, input_dim=64, hidden_dim=128, output_dim=6):
+    def __init__(self, input_dim=64, hidden_dim=32, output_dim=6):
         super().__init__()
         self.mlp = nn.Sequential(
             nn.LayerNorm(input_dim),
@@ -270,6 +297,8 @@ class EEGTransformerModel(nn.Module):
         self.EEG_SE_block = SE_block()
         self.EMG_SE_block = Sensor_SE_Block()
 
+        self.fusion = ModalityFusion(dropout_eeg=0.3, dropout_emg=0.1)
+
         self.embedding = Embedding()
         self.attention = Muti_Attention(dim=64)
         self.coord_regressor = Connected_layer(output_dim=output_dim)
@@ -281,6 +310,8 @@ class EEGTransformerModel(nn.Module):
         x = self.EEG_SE_block(x)
         y = self.EMG_SE_block(y)
 
+        x,y=self.fusion(x,y)
+
         x = self.embedding(x,y)            # (B, N, 512)
         x = self.attention(x)            # (B, N, 512)
         coords = self.coord_regressor(x) # (B, 6)
@@ -288,16 +319,16 @@ class EEGTransformerModel(nn.Module):
         return coords
 
 
-
-# # 模型实例
-model = EEGTransformerModel()
-
-# 输入：batch_size = 8 batch，32通道，250时间点
-x = torch.randn(8, 32, 250)
-y = torch.randn(8,5,250)
-out = model(x,y)
-
-print(out.shape)  # (8, 6)
+#
+# # # 模型实例
+# model = EEGTransformerModel()
+#
+# # 输入：batch_size = 8 batch，32通道，250时间点
+# x = torch.randn(8, 32, 250)
+# y = torch.randn(8,5,250)
+# out = model(x,y)
+#
+# print(out.shape)  # (8, 6)
 
 
 
