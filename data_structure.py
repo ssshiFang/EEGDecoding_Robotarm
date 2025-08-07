@@ -156,7 +156,7 @@ win = win_obj[0, 0]
 # print(type(win))  # <class 'numpy.void'>
 # print(win.dtype.names)  # ('eeg', 'kin', 'emg', 'eeg_t', 'emg_t', 'trial_start_time', 'LEDon', 'LEDoff', 'trial_end_time', 'weight', 'weight_id', 'surf', 'surf_id', 'weight_prev', 'weight_prev_id', 'surf_prev', 'surf_prev_id')
 #
-# EEG = win_obj['eeg'] #(4907时间点, 32通道)
+EEG = win_obj['eeg'] #(4907时间点, 32通道)
 # # print(EEG)
 # print(EEG[0,0].shape)
 # print(len(EEG[0])) #28
@@ -309,14 +309,14 @@ def data_per_process(raw_data, channel_names):
     return raw_clean
 
 
-# # 提取所有实验（确保是 list of np.ndarray）
-# eeg_list = [EEG[0, i] for i in range(28)]  # 每个是 (4097, 32)
-#
-# # 在时间轴（axis=0）上拼接
-# eeg_concat = np.concatenate(eeg_list, axis=0)  # shape = (4097*28, 32) = (114716, 32)
-#
-# raw=eeg_concat
-# raw_clean=data_per_process(eeg_concat, channel_names=eeg_channel_ch_names)  #取一次实验的EEG数据
+# 提取所有实验（确保是 list of np.ndarray）
+eeg_list = [EEG[0, i] for i in range(28)]  # 每个是 (4097, 32)
+
+# 在时间轴（axis=0）上拼接
+eeg_concat = np.concatenate(eeg_list, axis=0)  # shape = (4097*28, 32) = (114716, 32)
+
+raw=eeg_concat
+raw_clean=data_per_process(eeg_concat, channel_names=eeg_channel_ch_names)  #取一次实验的EEG数据
 
 
 
@@ -380,15 +380,15 @@ def preprocess_dataset(dataset, original_fs=4000, target_fs=500, lowcut=20, high
 
     return processed
 
-# -----------------------
-# 模拟你的数据（28个样本，每个是39256个时间点，5通道）
-data = [EMG[0, i] for i in range(28)]
-
-# 预处理数据
-processed_data = preprocess_dataset(data)
-
-print("原始 shape:", (len(data), data[0].shape))
-for i in range(0,28):
-    print("处理后 shape:", processed_data[i].shape)  # 应为 (28, ~4907, 5)
+# # -----------------------
+# # 模拟你的数据（28个样本，每个是39256个时间点，5通道）
+# data = [EMG[0, i] for i in range(28)]
+#
+# # 预处理数据
+# processed_data = preprocess_dataset(data)
+#
+# print("原始 shape:", (len(data), data[0].shape))
+# for i in range(0,28):
+#     print("处理后 shape:", processed_data[i].shape)  # 应为 (28, ~4907, 5)
 
 

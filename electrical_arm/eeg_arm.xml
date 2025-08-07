@@ -1,0 +1,18 @@
+<mujoco model="eeg_arm">
+  <option timestep="0.01"/>
+  <worldbody>
+    <body name="base" pos="0 0 0.1">
+      <joint name="joint1" type="hinge" axis="0 0 1" />
+      <geom size="0.02" fromto="0 0 0 0.15 0 0" type="capsule" rgba="0.8 0.2 0.2 1"/>
+      <body name="link2" pos="0.15 0 0">
+        <joint name="joint2" type="hinge" axis="0 0 1" />
+        <geom size="0.02" fromto="0 0 0 0.15 0 0" type="capsule" rgba="0.2 0.2 0.8 1"/>
+        <body name="link3" pos="0.15 0 0">
+          <joint name="joint3" type="hinge" axis="0 0 1" />
+          <geom size="0.02" fromto="0 0 0 0.1 0 0" type="capsule" rgba="0.2 0.8 0.2 1"/>
+          <site name="ee_site" pos="0.1 0 0" size="0.01" rgba="1 1 0 1"/>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+</mujoco>

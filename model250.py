@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 class MutiCovnet(nn.Module):
-    def __init__(self): #输入 (32, 1000)的EEG数据，输出xyz的坐标
+    def __init__(self): #输入 (32, 250)的EEG数据，输出xyz的坐标
         super().__init__()
 
         # eegnet前特征提取
@@ -38,12 +38,12 @@ class MutiCovnet(nn.Module):
             nn.BatchNorm2d(32),
             nn.ELU()
         )
-        # 4* (32, 32, 1000)
+        # 4* (32, 32, 250)
 
         # 将四个分支的输出通道数拼接，32*4=128
         self.conv_fusion = nn.Conv2d(128, 128, kernel_size=1, bias=False)
         self.bn_fusion = nn.BatchNorm2d(128)
-        # (32, 4*32, 1000)
+        # (32, 4*32, 250)
 
         # 时间轴池化，假设不降采样，或你可以加AvgPool2d降采样
         self.pool=nn.AvgPool2d(kernel_size=(1, 2), stride=(1, 2))  # (B,128,32通道,125时间)

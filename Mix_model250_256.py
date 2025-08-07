@@ -179,7 +179,7 @@ class Sensor_SE_Block(nn.Module):
 
 
 class Embedding(nn.Module):
-    def __init__(self, total_channels=37, in_features=128, d_model=64):
+    def __init__(self, total_channels=37, in_features=128, d_model=256):
         super().__init__()
         self.project = nn.Sequential(
             nn.Conv2d(total_channels, d_model, kernel_size=(in_features, 1)),  # 融合 EEG + EMG
@@ -246,7 +246,7 @@ class Muti_Attention(nn.Module):
         return x
 
 class Connected_layer(nn.Module):
-    def __init__(self, input_dim=64, hidden_dim=128, output_dim=6):
+    def __init__(self, input_dim=256, hidden_dim=128, output_dim=6):
         super().__init__()
         self.mlp = nn.Sequential(
             nn.LayerNorm(input_dim),
@@ -271,7 +271,7 @@ class EEGTransformerModel(nn.Module):
         self.EMG_SE_block = Sensor_SE_Block()
 
         self.embedding = Embedding()
-        self.attention = Muti_Attention(dim=64)
+        self.attention = Muti_Attention(dim=256)
         self.coord_regressor = Connected_layer(output_dim=output_dim)
 
     def forward(self, x, y):  # x: (B, 250, 32) y: (B, 250, 5)
