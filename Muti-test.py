@@ -4,7 +4,7 @@ import torch.optim as optim #优化器
 from torch.utils.data import Dataset, DataLoader #数据加载
 from tqdm import tqdm #训练进度条
 import os
-from model_py.model250_emb64_h4_cov4 import EEGTransformerModel
+from r_model.model250_emb256_h8 import EEGTransformerModel
 import numpy as np
 
 
@@ -225,11 +225,8 @@ def main():
 
     save_model(model, save_path)
 
-def test():
-    # 获取当前脚本所在目录
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    data_dir=os.path.join(current_dir, 'dataset')
-    model_dir = os.path.join(current_dir, 'f_model/best_model0.83.pth')
+def test(data_dir, model_dir):
+
 
     save_path_val_eeg = os.path.join(data_dir, 'val/eeg_val.npy')
     save_path_val_kin = os.path.join(data_dir, 'val/kin_val.npy')
@@ -240,6 +237,11 @@ def test():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     model = EEGTransformerModel()
+
+    # # 跑一次前向让 fc 层生成_EEGNet DeepConvNet
+    # dummy_input = torch.randn(1, 32, 250)
+    # model(dummy_input)
+
     model.load_state_dict(torch.load(model_dir, map_location=device))
     model.to(device)
 
@@ -248,8 +250,7 @@ def test():
 
     result = evaluate(model, val_loader, device)
 
-    print("验证结果（Pearson correlation）：", result)
-
+    print(f"PCC - PCC: {result['pcc']:.4f}, X: {result['pcc_x']:.4f}, Y: {result['pcc_y']:.4f}, Z: {result['pcc_z']:.4f}, RMSE: {result['rmse']:.4f}")
 
 
 
@@ -264,5 +265,18 @@ if __name__ == "__main__":
     # print(result)
 
     # val测试
-    test()
+    # 获取当前脚本所在目录
+    data_dir= r"D:\MyFolder\Msc_EEG\r_data\EEG\1_t250_s50_w200"
+    model_dir = r"D:\MyFolder\Msc_EEG\f_model\9_t250_s50_w200"
+
+    for model_file in os.listdir(model_dir):
+        file_path = os.path.join(model_dir, model_file)
+
+        # 只处理文件，忽略文件夹
+        if os.path.isfile(file_path) and model_file.endswith('.pth'):
+            print(f"正在加载模型: {file_path}")
+            test(data_dir, file_path)
+
+
+
 

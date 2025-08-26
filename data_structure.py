@@ -146,8 +146,8 @@ eeg_channel_names = names_obj['eeg']
 eeg_channel_ch_names = [ch[0] for ch in eeg_channel_names[0][0][0]]
 #
 # # 得到结果：
-# print(eeg_channel_ch_names)
-# # ['Fp1', 'Fp2', 'F7', 'F3', ..., 'PO10']  共 32 个通道
+print(eeg_channel_ch_names)
+# ['Fp1', 'Fp2', 'F7', 'F3', ..., 'PO10']  共 32 个通道
 
 
 # 看第一个窗口内容

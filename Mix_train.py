@@ -1,9 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim #优化器
-from  torch.utils.data import Dataset, DataLoader #数据加载
-from torchvision import datasets,transforms #数据集和数据变换
-from tqdm import  tqdm #训练进度条
+from torch.utils.data import Dataset, DataLoader #数据加载
+from tqdm import tqdm #训练进度条
 import os
 from Mix_control_model250 import EEGTransformerModel
 import numpy as np
@@ -11,9 +10,9 @@ import numpy as np
 
 def pearson_corrcoef(x, y):
     """
-    计算两个张量之间的皮尔逊相关系数
-    输入: x, y - shape 相同的 1D 或 2D 张量
-    输出: PCC（float）
+    pcc compute
+    input x, y - shape tensor 1D\2D
+    output PCC（float）
     """
     x = x.float()
     y = y.float()
@@ -27,9 +26,21 @@ def pearson_corrcoef(x, y):
     return (numerator / denominator).item()
 
 
+def rmse(x, y):
+    """
+    rmse compute
+    input x, y - shape tensor 1D\2D
+    output rmse（float）
+    """
+    x = x.float()
+    y = y.float()
+    return torch.sqrt(torch.mean((x - y) ** 2)).item()
+
+
+
 def pearson_seperate(x, y): # [px2, py2, pz2, px3, py3, pz3]
     """
-    计算两个张量每行的皮尔逊相关系数的均值
+    pcc compute:
     x, y shape: (B, 6)
     """
     px2_pre = x[:, 0]
@@ -61,11 +72,29 @@ def pearson_seperate(x, y): # [px2, py2, pz2, px3, py3, pz3]
     pcc_pz3 = pearson_corrcoef(pz3_pre, pz3)
     pcc_z = (pcc_pz2 + pcc_pz3) / 2
 
+    rmse_all = rmse(x, y)
+
+    # rmse_px2 = rmse(px2_pre, px2)
+    # rmse_px3 = rmse(px3_pre, px3)
+    # rmse_x = (rmse_px2 + rmse_px3) / 2
+    #
+    # rmse_py2 = rmse(py2_pre, py2)
+    # rmse_py3 = rmse(py3_pre, py3)
+    # rmse_y = (rmse_py2 + rmse_py3) / 2
+    #
+    # rmse_pz2 = rmse(pz2_pre, pz2)
+    # rmse_pz3 = rmse(pz3_pre, pz3)
+    # rmse_z = (rmse_pz2 + rmse_pz3) / 2
+
     result = {
         "pcc": pcc,
         "pcc_x": pcc_x,
         "pcc_y": pcc_y,
-        "pcc_z": pcc_z
+        "pcc_z": pcc_z,
+        "rmse": rmse_all
+        # "rmse_x": rmse_x,
+        # "rmse_y": rmse_y,
+        # "rmse_z": rmse_z
     }
 
     return result
@@ -117,7 +146,7 @@ def train(model, train_loader, test_loader, optimizer, criterion, device, num_ep
         print(
             f"[Epoch {epoch + 1}/{num_epochs}] "
             f"Train Loss: {epoch_loss:.4f} | "
-            f"PCC - PCC: {val_pcc['pcc']:.4f}, X: {val_pcc['pcc_x']:.4f}, Y: {val_pcc['pcc_y']:.4f}, Z: {val_pcc['pcc_z']:.4f}"
+            f"PCC - PCC: {val_pcc['pcc']:.4f}, X: {val_pcc['pcc_x']:.4f}, Y: {val_pcc['pcc_y']:.4f}, Z: {val_pcc['pcc_z']:.4f}, RMSE: {val_pcc['rmse']:.4f}"
         )
 
         if val_pcc['pcc'] > best_pcc:
@@ -200,7 +229,7 @@ def main():
 
     # 测试评估
     val_pcc = evaluate(model, test_loader, device)
-    print( f"PCC - PCC: {val_pcc['pcc']:.4f}, X: {val_pcc['pcc_x']:.4f}, Y: {val_pcc['pcc_y']:.4f}, Z: {val_pcc['pcc_z']:.4f}")
+    print( f"PCC - PCC: {val_pcc['pcc']:.4f}, X: {val_pcc['pcc_x']:.4f}, Y: {val_pcc['pcc_y']:.4f}, Z: {val_pcc['pcc_z']:.4f}, RMSE: {val_pcc['rmse']:.4f}")
 
     save_model(model, save_path)
 

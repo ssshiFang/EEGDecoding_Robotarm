@@ -34,10 +34,9 @@ def kin_process(kin_vector):
 
 
 def data_preprocess(data):
-    my_data = data['ws'] # 数据文件存储在此
+    my_data = data['ws'] # data saved here
     ws_obj = my_data[0, 0]
 
-    #获得传感器的位置信息
     names_obj = ws_obj['names']
     # print(names_obj[0,0].dtype.names) #('eeg', 'kin', 'emg')分别的位置信息
     eeg_channel_names = names_obj['eeg']
@@ -60,7 +59,7 @@ def data_preprocess(data):
 
 
 def arm_trial(data, have_emg, trial_num):
-    my_data = data['ws'] # 数据文件存储在此
+    my_data = data['ws'] # data saved here
     ws_obj = my_data[0, 0]
 
     #获得传感器的位置信息
@@ -77,10 +76,10 @@ def arm_trial(data, have_emg, trial_num):
         EMG = win_obj['emg']
         emg_data = EMG[0, trial_num] # [(T, 5), ]
 
-        # 滤波
+        # filter
         filtered = bandpass_filter(emg_data, lowcut=20, highcut=450, fs=4000)
 
-        # 下采样
+        # downsample
         downsampled = downsample_signal(filtered, original_fs=4000, target_fs=500)
 
         emg_5_channel= downsampled.T
@@ -104,32 +103,25 @@ def arm_trial(data, have_emg, trial_num):
 
 #emg pre-process
 def bandpass_filter(data, lowcut, highcut, fs, order=4):
-    """
-    对信号进行带通滤波，返回滤波后的结果。
-    data: shape (T, C)
-    """
     sos = butter(order, [lowcut, highcut], btype='band', fs=fs, output='sos')
 
-    # 计算合理的 padlen，不能超过数据长度的一半
+    # padlen no longer than half of length
     padlen = min(300, data.shape[0] // 2 - 1)
 
     if padlen <= 0:
-        print("[Warning] 信号太短，跳过滤波。")
+        print("[Warning] data length not enough")
         return data
 
     try:
         return sosfiltfilt(sos, data, axis=0, padlen=padlen)
     except Exception as e:
-        print(f"[滤波失败] padlen={padlen}, len={len(data)}，错误信息：{e}")
+        print(f"[fail] padlen={padlen}, len={len(data)}, {e}")
         return data
 
 
 
 def downsample_signal(data, original_fs, target_fs):
-    """
-    使用抗混叠滤波器进行下采样。
-    data: shape (T, C)
-    """
+
     data = np.asarray(data, dtype=np.float32)
     if data.ndim == 1:
         data = data[:, np.newaxis]
@@ -140,7 +132,7 @@ def downsample_signal(data, original_fs, target_fs):
     try:
         return resample_poly(data, up, down, axis=0)
     except Exception as e:
-        print(f"[下采样失败] down={down}, len={len(data)}，错误信息：{e}")
+        print(f"[fail] down={down}, len={len(data)}: {e}")
         return data
 
 
@@ -150,19 +142,19 @@ def preprocess_dataset(dataset, original_fs=4000, target_fs=500, lowcut=20, high
 
     for i, sample in enumerate(dataset):
         if not isinstance(sample, np.ndarray):
-            print(f"[跳过] 第{i}个样本不是 np.ndarray，类型为 {type(sample)}")
+            print(f"{i} sample error, not np.ndarray type:{type(sample)}")
             continue
 
         try:
-            # 滤波
+            # filter
             filtered = bandpass_filter(sample, lowcut, highcut, original_fs)
 
-            # 下采样
+            # downsample
             downsampled = downsample_signal(filtered, original_fs, target_fs)
 
             processed.append(downsampled.T)
         except Exception as e:
-            print(f"[预处理失败] 第{i}个样本，错误信息：{e}")
+            print(f"fail {i}:{e}")
             continue
 
     return processed
@@ -170,10 +162,10 @@ def preprocess_dataset(dataset, original_fs=4000, target_fs=500, lowcut=20, high
 
 
 def emg_data_preprocess(data):
-    my_data = data['ws']  # 数据文件存储在此
+    my_data = data['ws']  # data saved here
     ws_obj = my_data[0, 0]
 
-    # 获得传感器的位置信息
+    # obj location
     names_obj = ws_obj['names']
     win_obj=ws_obj['win']
     EMG = win_obj['emg']
@@ -196,11 +188,11 @@ def plot_pre_post_comparison(raw, raw_clean, ch_idx=0):
     times = raw.times
 
     plt.figure(figsize=(15, 4))
-    plt.plot(times, data_raw[ch_idx], label='原始', alpha=0.6)
-    plt.plot(times, data_clean[ch_idx], label='清洗后', alpha=0.6)
-    plt.xlabel('时间 (秒)')
-    plt.ylabel('电压 (uV)')
-    plt.title(f'通道 {raw.ch_names[ch_idx]}：处理前 vs 处理后')
+    plt.plot(times, data_raw[ch_idx], label='origin', alpha=0.6)
+    plt.plot(times, data_clean[ch_idx], label='filtered', alpha=0.6)
+    plt.xlabel('s')
+    plt.ylabel('uV')
+    plt.title(f'pass {raw.ch_names[ch_idx]}after process')
     plt.legend()
     plt.tight_layout()
     plt.show()
@@ -210,21 +202,21 @@ def plot_pre_post_comparison(raw, raw_clean, ch_idx=0):
 def eeg_esi_process(raw_data, channel_names):
     fs = 500  # sample rate
 
-    # 创建 info 对象（信道信息）
+    # create info object
     ch_names = channel_names
     ch_types = ['eeg'] * 32
     info = mne.create_info(ch_names=ch_names, sfreq=fs, ch_types=ch_types)
 
-    # 转置成 shape (n_channels, n_times)
+    # shape (n_channels, n_times)
     raw_data_T = raw_data.T
 
-    # 创建 RawArray 对象
+    # create RawArray object
     raw = mne.io.RawArray(raw_data_T, info)
 
     # 设置标准电极布局（解决 No digitization points）
     raw.set_montage('standard_1020')
 
-    # 1.带通滤波
+    # 1.IIR filiter
     raw.filter(0.1, 40., fir_design='firwin', phase='zero',
                l_trans_bandwidth=0.05, h_trans_bandwidth=2.5)
 
@@ -254,21 +246,21 @@ def eeg_esi_process(raw_data, channel_names):
 def eeg_process(raw_data, channel_names):
     fs = 500  # sample rate
 
-    # 创建 info 对象（信道信息）
+    # create info object
     ch_names = channel_names
     ch_types = ['eeg'] * 32
     info = mne.create_info(ch_names=ch_names, sfreq=fs, ch_types=ch_types)
 
-    # 转置成 shape (n_channels, n_times)
+    # shape (n_channels, n_times)
     raw_data_T = raw_data.T
 
-    # 创建 RawArray 对象
+    # create RawArray object
     raw = mne.io.RawArray(raw_data_T, info)
 
     # 设置标准电极布局（解决 No digitization points）
     raw.set_montage('standard_1020')
 
-    # 1.IIR滤波
+    # 1.IIR filiter
     raw.filter(0.1, 40., method='iir')
 
     # 2.common average referencing (CAR)
@@ -280,21 +272,20 @@ def eeg_process(raw_data, channel_names):
 
 
 def trials_to_pickle(new_trials, file_path='all_trials.pkl'):
-    # 1. 先判断文件是否存在
+    # adjust id document exist
     if os.path.exists(file_path):
         with open(file_path, 'rb') as f:
             trials = pickle.load(f)
     else:
         trials = []
 
-    # 2. 添加新 trial
+    # extend trial
     trials.extend(new_trials)
 
-    # 3. 覆写保存
     with open(file_path, 'wb') as f:
         pickle.dump(trials, f)
 
-    print(f"当前文件中共保存 {len(trials)} 个 trial")
+    print(f"total save {len(trials)} trial")
 
 
 def save_all(save_path_data, have_emg=False, participant=1):
@@ -319,24 +310,21 @@ def save_all(save_path_data, have_emg=False, participant=1):
 
 
 def eeg_arm_pickle(new_trials, file_path='all_trials.pkl'):
-    # 1. 先判断文件是否存在
     if os.path.exists(file_path):
         with open(file_path, 'rb') as f:
             trials = pickle.load(f)
     else:
         trials = []
 
-    # 2. 添加新 trial
-    trials.extend([new_trials])
+    trials.extend([new_trials]) # add new trial
 
-    # 3. 覆写保存
     with open(file_path, 'wb') as f:
         pickle.dump(trials, f)
 
-    print(f"当前文件中共保存 {len(trials)} 个 trial")
+    print(f"total save {len(trials)} trial")
 
 
-def save_eeg_trial(save_path_data, have_emg=False, participant=4, file=1, trial_num=0):
+def save_eeg_trial(save_path_data, have_emg=False, participant=4, file=1, trial_num=1):
     data_dir = f'D:/MyFolder/Msc_EEG/data{participant}'
     file = f'WS_P{participant}_S{file}.mat'
 
@@ -345,28 +333,27 @@ def save_eeg_trial(save_path_data, have_emg=False, participant=4, file=1, trial_
     eeg, kin, emg = arm_trial(mat, have_emg=have_emg, trial_num=trial_num)
 
     if have_emg:
-        new_trial = {'eeg': eeg, 'emg': emg, 'kin': kin}  # 整段数据
+        new_trial = {'eeg': eeg, 'emg': emg, 'kin': kin}
     else:
         new_trial = {'eeg': eeg, 'kin': kin}
 
     eeg_arm_pickle(new_trial, file_path=save_path_data)
 
 
-def split_trials_fixed(filepath, val_num=60, test_num=60, train_num=300, seed=42):
-    # 1. 加载数据
+def split_trials_fixed(filepath, val_num=30, test_num=30, train_num=234, seed=42):
     with open(filepath, 'rb') as f:
         trials = pickle.load(f)
 
-    # 2. 打乱
+    # get random
     random.seed(seed)
     random.shuffle(trials)
 
-    # 3. 划分
-    val_trials = trials[:val_num]
-    test_trials = trials[val_num:val_num + test_num]
-    train_trials = trials[val_num + test_num:val_num + test_num + train_num]
+    # slice
+    val_trials = trials[-val_num:]  # last val_num
+    test_trials = trials[-(val_num + test_num):-val_num]
+    train_trials = trials[:-(val_num + test_num)]
 
-    print(f"划分结果：Train: {len(train_trials)}, Val: {len(val_trials)}, Test: {len(test_trials)}")
+    print(f"Slice outcome  Train: {len(train_trials)}, Val: {len(val_trials)}, Test: {len(test_trials)}")
 
     return train_trials, val_trials, test_trials
 
@@ -380,7 +367,7 @@ def slice_and_merge_all_trials(trials,
                                emg_name='emg',
                                have_emg=False,
                                kin_delay_ms=200,
-                               fs=500):  # 采样率
+                               fs=500):  # sample rate
 
     os.makedirs(save_dir, exist_ok=True)
 
@@ -389,7 +376,7 @@ def slice_and_merge_all_trials(trials,
     if have_emg:
         all_emg_slices = []
 
-    kin_delay = int((kin_delay_ms / 1000) * fs)  # 延迟点数 = 200ms * 500Hz = 100点
+    kin_delay = int((kin_delay_ms / 1000) * fs)  # delay = 200ms * 500Hz = 100
 
     for idx, trial in enumerate(trials):
         eeg = trial['eeg']  # shape: (32, T)
@@ -408,14 +395,14 @@ def slice_and_merge_all_trials(trials,
             kin_start = start + kin_delay
             kin_end = end + kin_delay
 
-            # 边界检查（避免越界）
+            # check border
             if kin_end > T:
-                break  # 超出边界，放弃这个窗口（也可考虑 pad）
+                break
 
             kin_seg = kin[:, kin_start:kin_end]
 
 
-            # 补零（仅针对 EEG，不处理越界 KIN）
+            # pedding
             if eeg_seg.shape[1] < window_size:
                 pad = window_size - eeg_seg.shape[1]
                 eeg_seg = np.pad(eeg_seg, ((0, 0), (0, pad)))
@@ -431,17 +418,17 @@ def slice_and_merge_all_trials(trials,
 
                 all_emg_slices.append(emg_seg)
 
-        print(f" Trial {idx:02d} 切片完成，共 {int((T - window_size - kin_delay) / step_size + 1)} 段")
+        print(f" Trial {idx:02d} sliced, total: {int((T - window_size - kin_delay) / step_size + 1)} ")
 
     all_eeg_array = np.stack(all_eeg_slices)  # shape: (N, 32, window)
     all_kin_array = np.stack(all_kin_slices)  # shape: (N, 6, window)
 
 
-    # 保存
+    # save
     np.save(os.path.join(save_dir, eeg_name), all_eeg_array)
     np.save(os.path.join(save_dir, kin_name), all_kin_array)
 
-    print(f"\n 所有 trial 已拼接并保存：")
+    print(f"\n all trial saved:")
 
     if have_emg:
         all_emg_array = np.stack(all_emg_slices) # shape: (N, 5, window)
@@ -449,24 +436,22 @@ def slice_and_merge_all_trials(trials,
         print(f"EMG: {all_emg_array.shape}")
 
     print(f"EEG: {all_eeg_array.shape}, KIN: {all_kin_array.shape}")
-    print(f"保存路径：{save_dir}")
+    print(f"save path：{save_dir}")
 
 
 def main():
-    # 加载数据
+    # load data
     # data = scipy.io.loadmat('D:/MyFolder/Msc_EEG/data/WS_P5_S1.mat') # dict type
 
-    # 获取当前脚本所在目录
+    # get location
     current_dir = os.path.dirname(os.path.abspath(__file__))
 
-    # 拼接你想保存的子文件夹路径（如 'processed'）
     save_dir = os.path.join(current_dir, 'processed')
     model_dir = os.path.join(current_dir, 'dataset')
 
-    # 创建目录（如果不存在）
     os.makedirs(save_dir, exist_ok=True)
 
-    # 数据的加载保存路径
+    # save path
     save_path = os.path.join(save_dir, 'subject_all')
     save_path_data = os.path.join(save_dir, 'subject_all/all_trials.pkl')
 
@@ -474,13 +459,14 @@ def main():
     save_path_test = os.path.join(model_dir, 'test')
     save_path_val = os.path.join(model_dir, 'val')
 
-    have_emg=False
+    have_emg = True # if use multi-modality
 
-    # save_all(save_path_data=save_path_data, have_emg=have_emg, participant=9)  # 将所有实验保存为pkl文件
+    save_all(save_path_data=save_path_data, have_emg=have_emg, participant=1)  # save all data as pkl document
 
+    # get different trials
     train_trials, val_trials, test_trials=split_trials_fixed(save_path_data)
 
-    #对这三个做切分
+    # slice
     if not(have_emg):
         slice_and_merge_all_trials(train_trials, save_dir=save_path_train, eeg_name='eeg_train.npy', kin_name='kin_train.npy')
         slice_and_merge_all_trials(test_trials, save_dir=save_path_test, eeg_name='eeg_test.npy', kin_name='kin_test.npy')
@@ -491,39 +477,19 @@ def main():
         slice_and_merge_all_trials(val_trials, save_dir=save_path_val, eeg_name='eeg_val.npy', kin_name='kin_val.npy', emg_name='emg_val.npy', have_emg=have_emg)
 
 
-
-    #文件长度记录
-    #5_7_9 882 trial
-
-    # 切分记录，(切片长度，步长)
-    # (1000,250)
-    # (500, 200)
-    # (250, 50)
-
-    #查看整理好的数据
-    # with open(save_path_data, 'rb') as f:
-    #     trials = pickle.load(f)
-    #     print(f"共载入 {len(trials)} 个 trial")
-    #
-    #     # 查看第一个 trial 的 shape
-    #     print("EEG shape:", trials[0]['eeg'].shape)
-    #     print("KIN shape:", trials[0]['kin'].shape)
-
-    # slice_save(eeg,kin,save_path=save_path)
-
 def check_single_pkl_file(pkl_path, expected_channels=32):
     """
-    检查一个 pkl 文件中 eeg 通道数是否为 expected_channels（默认 32）
+    check pkl data
     """
     if not os.path.exists(pkl_path):
-        print(f"文件不存在: {pkl_path}")
+        print(f"do not have {pkl_path}")
         return
 
     with open(pkl_path, 'rb') as f:
         try:
             trials = pickle.load(f)
         except Exception as e:
-            print(f"[ERROR] 无法读取 {pkl_path}: {e}")
+            print(f"[ERROR] can not read {pkl_path}: {e}")
             return
 
         for i, trial in enumerate(trials):
@@ -532,7 +498,7 @@ def check_single_pkl_file(pkl_path, expected_channels=32):
 
             eeg = trial.get('eeg', None)
             if eeg is None:
-                print(f"[WARNING] trial {i} 没有 'eeg' 字段")
+                print(f"[WARNING] trial {i} not have 'eeg'")
                 continue
 
             if isinstance(eeg, list):
@@ -540,31 +506,29 @@ def check_single_pkl_file(pkl_path, expected_channels=32):
 
             if hasattr(eeg, 'shape'):
                 if eeg.shape[0] != expected_channels:
-                    print(f"[ERROR] trial {i} 的 eeg shape 为 {eeg.shape}，通道数不为 {expected_channels}")
+                    print(f"trial {i} eeg shape: {eeg.shape}, channel: {expected_channels}")
                 else:
-                    print(f"[OK] trial {i} 的 eeg shape 为 {eeg.shape}")
+                    print(f"trial {i}  eeg shape: {eeg.shape}")
             else:
-                print(f"[ERROR] trial {i} 的 eeg 无 shape 属性")
+                print(f"trial {i} not have shape")
 
 
 # 用于机械臂控制的eegdata生成
 def main2():
-    # 获取当前脚本所在目录
+    # location
     current_dir = os.path.dirname(os.path.abspath(__file__))
 
-    # 拼接你想保存的子文件夹路径（如 'processed'）
     save_dir = os.path.join(current_dir, 'electrical_arm')
 
-    # 创建目录（如果不存在）
     os.makedirs(save_dir, exist_ok=True)
 
-    # 数据的加载保存路径
+    # save path
     save_path = os.path.join(save_dir, 'trial_data')
     save_path_data = os.path.join(save_dir, 'trial_data/arm_trial.pkl')
 
     have_emg = True
 
-    save_eeg_trial(save_path_data=save_path_data, have_emg=have_emg, participant=5)  # 保存单次trail eeg为pkl文件
+    save_eeg_trial(save_path_data=save_path_data, have_emg=have_emg, participant=9)  # save signal trial for robot arm decoding
 
 
 

@@ -8,20 +8,22 @@ from stable_baselines3 import PPO
 import torch.nn as nn
 import time
 import torch
-from Mix_model250_256 import EEGTransformerModel
+from r_model.model250_emb256_h8 import EEGTransformerModel
 import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
 from mpl_toolkits.mplot3d import Axes3D
 from torch.utils.data import Dataset, DataLoader
+import imageio
 import pickle
 import os
 
 
 def align(eeg, emg, delay=200):
-    assert eeg.shape[1] == emg.shape[1], "EEG 和 EMG 时间长度必须一致"
+    assert eeg.shape[1] == emg.shape[1], "EEG and EMG should have same length"
     time_steps = eeg.shape[1]
 
     if delay >= time_steps:
-        raise ValueError("延迟值不能大于或等于信号长度")
+        raise ValueError("delay not over length")
 
     new_len = time_steps - delay
     eeg_aligned = eeg[:, :new_len]
@@ -40,21 +42,21 @@ def trial_data(have_emg= False, kin_output=False):
     save_dir = os.path.join(parent_dir, 'electrical_arm')
 
     # 数据的加载保存路径
-    eeg_path = os.path.join(save_dir, 'trial_data/arm_trial.pkl')
+    eeg_path = os.path.join(save_dir, 'trial_data/4_eeg_arm_trial1.pkl')
 
     with open(eeg_path, 'rb') as f:
         trial = pickle.load(f)
 
+
+    if kin_output:
+        kin_trial = trial[0]['kin']  # shape: (6, T)
+        return kin_trial
 
     if have_emg:
         eeg_trial = trial[0]['eeg']  # shape: (32, T)
         emg_trial = trial[0]['emg']  # shape: (N_emg, T)
         eeg, emg = align(eeg_trial, emg_trial)
         return eeg, emg
-
-    if kin_output:
-        kin_trial = trial[0]['kin']  # shape: (6, T)
-        return kin_trial
 
     else:
         eeg_trial = trial[0]['eeg']  # shape: (32, T)
@@ -67,10 +69,10 @@ def trial_data(have_emg= False, kin_output=False):
 # EEG docoding test
 def EEG_Decoder(eeg_data, emg_data=None, segment_length=250, have_emg=False):
     """
-    加载 EEG 模型，对给定 EEG 数据进行分段解码，输出目标点序列
-    :eeg_data: numpy array, shape=(32, T) if have_emg= True emg (5, T)
-    :param segment_length: 每段的时间步数（默认250）
-    :return: numpy array, shape=(N, 6) — 每段一个目标点
+    Using model for decoding
+    eeg_data: (32, T) if have_emg= True emg (5, T)
+    segment_length windows of eeg and kin, emg
+    return: (N, 6)
     """
 
     # 获取当前路径
@@ -78,7 +80,7 @@ def EEG_Decoder(eeg_data, emg_data=None, segment_length=250, have_emg=False):
     parent_dir = os.path.dirname(current_dir)
 
     # 模型路径
-    model_path = os.path.join(parent_dir, 'f_model/5_EMG_best_model0.94_t250_s50_w200.pth')
+    model_path = os.path.join(parent_dir, 'f_model/4_eeg_arm_best_model0.88.pth')
 
     # 设备选择
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -154,8 +156,9 @@ def limit_angle(angle):
 
 # 映射归一化坐标到机械臂工作空间（这里简单映射，按需调整）
 def map_workspace(coords):
-    workspace_min = np.array([0.3, 0.03, 0.13])
-    workspace_max = np.array([0.8,  0.7, 0.55])
+    coords[:, 1] = 1 - coords[:, 1] # y 1-0 -> 0-1
+    workspace_min = np.array([0.3, 0.03, 0.2])
+    workspace_max = np.array([0.7, 0.6, 0.55])
     return workspace_min + coords * (workspace_max - workspace_min)
 
 #简单的数值逆运动学（基于雅可比矩阵的伪逆法）
@@ -233,8 +236,8 @@ def ik_jacobian_position(target_pos,
         ee_pos = data.site(site_id).xpos  # 当前末端执行器的位置
         pos_err = target_pos - ee_pos     # 位置误差
 
-        print(f"Error Norm: {np.linalg.norm(pos_err):.4f}")
-        print(f"EE Pos: {ee_pos}")
+        # print(f"Error Norm: {np.linalg.norm(pos_err):.4f}")
+        # print(f"EE Pos: {ee_pos}")
 
         if np.linalg.norm(pos_err) < tol:
             break
@@ -252,8 +255,8 @@ def ik_jacobian_position(target_pos,
 
 def initial_location(model,
                      data,
-                     hold_time=3.0,
-                     steps=500):
+                     hold_time=1.0,
+                     steps=40):
     start_q=numpy.zeros(7)
     initial_q=numpy.array([0,0.1,0,-3,2.9,1.65,-2.4]) # initial [0,0.335,0,-3,2.9,1.4,-2.4,0.02,0.02]
     # initial_q = numpy.array([-0.78, 0.1, 0, -3, 2.9, 1.65, -2.4])
@@ -331,7 +334,7 @@ def duration(target_q, time_len, model):
 
 
 def initial(model,data,
-            hold_time=3.0,
+            hold_time=1.0,
             steps=500):
     start_q=numpy.zeros(7)
     initial_q=numpy.array([-0.78,0.15,0,-3,2.9,1.65,-2.4]) # initial [0,0.335,0,-3,2.9,1.4,-2.4]
@@ -349,7 +352,7 @@ def movement(start_q, target_q,
              model,
              hold=False,
              steps=200):
-    trajectory = np.linspace(start_q[:7], target_q[:7], steps)  # zero -> initial
+    trajectory = np.linspace(start_q[:7], target_q[:7], steps)  # initial -> target
 
 
     if hold:
@@ -364,15 +367,30 @@ def movement(start_q, target_q,
     return finial_trajectory
 
 
-def trajectory_show(trajectory, model, data, viewer):
+def trajectory_show(trajectory, model, data, viewer, save_gif, save_path):
+    frames = []
+
+    renderer = mujoco.Renderer(model)
+
     for q in trajectory:
         data.ctrl[:7] = q[:7]
         mujoco.mj_forward(model, data)
 
-        # 每个姿态执行 5 个仿真步骤保持流畅
+        # step show
         for _ in range(30):
             mujoco.mj_step(model, data)
             viewer.sync()
+
+            if save_gif:
+                try:
+                    renderer.update_scene(data)
+                    frame = renderer.render()
+                    frames.append(frame)
+                except Exception as e:
+                    print("error:", e)
+
+    if save_gif and len(frames) > 0:
+        imageio.mimsave(save_path, frames, fps=15)
 
 
 # 解出一个展示一个
@@ -431,12 +449,10 @@ def sample_kin_points(kin, start, step):
     return sampled
 
 
-def draw_trajectory(targets, bounds_min=(0, 0, 0), bounds_max=(0.8, 0.8, 0.8)):
+def draw_trajectory(targets, bounds_min=(0, 0, 0), bounds_max=(0.8, 0.8, 0.8), output=False):
     """
-    显示目标点轨迹线
-    :param targets: shape (N, 3) 的 numpy 数组，按时间顺序排列的目标点坐标
-    :param bounds_min: 3D 控件空间的最小边界
-    :param bounds_max: 3D 控件空间的最大边界
+    Show trajectory
+    targets: (N, 3)
     """
     targets = np.array(targets)  # Ensure it's an ndarray
     x, y, z = targets[:, 0], targets[:, 1], targets[:, 2]
@@ -459,11 +475,30 @@ def draw_trajectory(targets, bounds_min=(0, 0, 0), bounds_max=(0.8, 0.8, 0.8)):
     ax.set_ylabel('Y')
     ax.set_zlabel('Z')
     ax.set_title("3D Target Trajectory")
+    # ax.set_title("Participant 9 EEG")
+    # ax.set_title("Participant 9 EEG EMG Multi-modality")
+    # ax.set_title("Participant 9 Kinematic Trajectory")
     ax.legend()
-    ax.view_init(elev=30, azim=135)  # 可调视角
+    ax.view_init(elev=20, azim=-45)  # 可调视角
 
-    plt.tight_layout()
-    plt.show()
+    if output == True:
+        # 更新函数
+        def update(angle):
+            ax.view_init(elev=30, azim=angle)  # elev=仰角, azim=旋转角度
+            return fig,
+
+        # 创建动画（0-360度旋转）
+        ani = FuncAnimation(fig, update, frames=np.linspace(0, 360, 240), interval=50, blit=False)
+
+        # 保存为 gif（需要 pillow）
+        ani.save('arotation.gif', writer='pillow', fps=10)
+
+        plt.close(fig)  # 生成 gif 后关闭图形
+
+    else:
+        plt.tight_layout()
+        plt.show()
+
 
 
 def targets_get(have_emg=False, output_kin=False):
@@ -476,7 +511,7 @@ def targets_get(have_emg=False, output_kin=False):
         return targets
     else:
         if have_emg:
-            eeg, emg =  trial_data(have_emg=have_emg, kin_output=False)  # input eeg in one trial
+            eeg, emg = trial_data(have_emg=have_emg, kin_output=False)  # input eeg in one trial
             positions = EEG_Decoder(eeg, emg, have_emg=have_emg)
             targets = target_compute(positions)
 
@@ -491,6 +526,11 @@ def targets_get(have_emg=False, output_kin=False):
 
 def main():
     # Mujoco
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+
+    # gif save path
+    save_path = os.path.join(current_dir, 'gif/4_emg_best_model0.96_t250_s50_w200.gif')
+
     model = mujoco.MjModel.from_xml_path("scene.xml")
     data = mujoco.MjData(model)
     have_emg=True
@@ -499,7 +539,7 @@ def main():
     targets = targets_get(have_emg, output_kin)
 
     with mujoco.viewer.launch_passive(model, data) as viewer:
-
+        # viewer.opt.frame = mujoco.mjtFrame.mjFRAME_WORLD # show x y z
         while viewer.is_running():
             start_q, target_quat, trajectory_i = initial_location(model, data)
 
@@ -524,14 +564,12 @@ def main():
 
                 current_q = q_target  # 更新当前关节角度为下次轨迹起点
 
-            final_trajectory = movement(current_q, start_q, model, steps=50)
-            full_trajectory.extend(final_trajectory)
+            # trajectory for come into initial
+            # final_trajectory = movement(current_q, start_q, model, steps=50)
+            # full_trajectory.extend(final_trajectory)
 
             # 显示整条轨迹
-            trajectory_show(np.array(full_trajectory), model, data, viewer)
-
-
-
+            trajectory_show(np.array(full_trajectory), model, data, viewer, save_gif=False, save_path=save_path)
 
 
             # # 单目标点轨迹示例
@@ -556,13 +594,13 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
-    # have_emg = True
-    # output_kin = False
-    #
-    # targets = targets_get(have_emg, output_kin)
-    #
-    # draw_trajectory(targets)
+    # main()
+    have_emg = False
+    output_kin = False
+
+    targets = targets_get(have_emg, output_kin)
+
+    draw_trajectory(targets, output=False)
 
 
 

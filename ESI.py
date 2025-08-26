@@ -90,37 +90,37 @@
 #     # 得到源域特征：stc.data.shape = (n_sources, n_times)
 
 
-import numpy as np
-import matplotlib.pyplot as plt
-
-def plot_frequency_response(kernel):
-    # 计算频率响应（FFT）
-    freq_resp = np.fft.fft(kernel, 512)
-    freq_resp = np.abs(freq_resp)
-    freq_resp = freq_resp / np.max(freq_resp)  # 归一化
-    freqs = np.linspace(0, 0.5, len(freq_resp)//2)  # 采样频率归一化，0~0.5为Nyquist
-
-    plt.plot(freqs, freq_resp[:len(freq_resp)//2])
-    plt.xlabel('Normalized Frequency')
-    plt.ylabel('Magnitude')
-    plt.ylim(0, 1.1)
-    plt.grid(True)
-
-# 构造两个卷积核：一个大核，一个小核
-# 这里用简单的矩形窗口表示滤波器权重，方便观察频率响应差异
-
-large_kernel = np.ones(15) / 15  # 大核卷积核，长度15
-small_kernel = np.ones(3) / 3    # 小核卷积核，长度3
-
-plt.figure(figsize=(10, 5))
-plot_frequency_response(large_kernel)
-plt.title('Frequency Response of Large Kernel (length=15)')
-plt.show()
-
-plt.figure(figsize=(10, 5))
-plot_frequency_response(small_kernel)
-plt.title('Frequency Response of Small Kernel (length=3)')
-plt.show()
+# import numpy as np
+# import matplotlib.pyplot as plt
+#
+# def plot_frequency_response(kernel):
+#     # 计算频率响应（FFT）
+#     freq_resp = np.fft.fft(kernel, 512)
+#     freq_resp = np.abs(freq_resp)
+#     freq_resp = freq_resp / np.max(freq_resp)  # 归一化
+#     freqs = np.linspace(0, 0.5, len(freq_resp)//2)  # 采样频率归一化，0~0.5为Nyquist
+#
+#     plt.plot(freqs, freq_resp[:len(freq_resp)//2])
+#     plt.xlabel('Normalized Frequency')
+#     plt.ylabel('Magnitude')
+#     plt.ylim(0, 1.1)
+#     plt.grid(True)
+#
+# # 构造两个卷积核：一个大核，一个小核
+# # 这里用简单的矩形窗口表示滤波器权重，方便观察频率响应差异
+#
+# large_kernel = np.ones(15) / 15  # 大核卷积核，长度15
+# small_kernel = np.ones(3) / 3    # 小核卷积核，长度3
+#
+# plt.figure(figsize=(10, 5))
+# plot_frequency_response(large_kernel)
+# plt.title('Frequency Response of Large Kernel (length=15)')
+# plt.show()
+#
+# plt.figure(figsize=(10, 5))
+# plot_frequency_response(small_kernel)
+# plt.title('Frequency Response of Small Kernel (length=3)')
+# plt.show()
 
 # import torch
 # import torch.nn as nn
@@ -154,5 +154,32 @@ plt.show()
 # plt.title("卷积后的响应（第1个卷积核）")
 # plt.tight_layout()
 # plt.show()
+
+# import numpy as np
+# import os
+#
+#
+# # 获取当前脚本所在目录
+# current_dir = os.path.dirname(os.path.abspath(__file__))
+#
+# # 拼接你想保存的子文件夹路径（如 'processed'）
+# save_dir = os.path.join(current_dir, 'dataset')
+#
+# # 数据的加载保存路径
+# eeg_path = os.path.join(save_dir, 'test/emg_test.npy')
+#
+# # 读取 EEG
+# eeg_array = np.load(eeg_path)
+# print("EEG shape:", eeg_array)  # (N, 32, window)
+
+# # 读取 KIN
+# kin_array = np.load(os.path.join(save_dir, 'kin.npy'))
+# print("KIN shape:", kin_array.shape)  # (N, 6, window)
+
+# # 如果有 EMG
+# emg_path = os.path.join(save_dir, 'emg.npy')
+# if os.path.exists(emg_path):
+#     emg_array = np.load(emg_path)
+#     print("EMG shape:", emg_array.shape)  # (N, 5, window)
 
 
