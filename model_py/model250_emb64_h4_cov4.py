@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 class MutiCovnet(nn.Module):
-    def __init__(self): #输入 (32, 1000)的EEG数据，输出xyz的坐标
+    def __init__(self): #输入 (32, 250)的EEG数据，输出xyz的坐标
         super().__init__()
 
         # eegnet前特征提取
@@ -38,20 +38,20 @@ class MutiCovnet(nn.Module):
             nn.BatchNorm2d(32),
             nn.ELU()
         )
-        # 4* (32, 32, 1000)
+        # 4* (32, 32, 250)
 
         # 将四个分支的输出通道数拼接，32*4=128
         self.conv_fusion = nn.Conv2d(128, 128, kernel_size=1, bias=False)
         self.bn_fusion = nn.BatchNorm2d(128)
-        # (32, 4*32, 1000)
+        # (32, 4*32, 250)
 
         # 时间轴池化，假设不降采样，或你可以加AvgPool2d降采样
-        self.pool=nn.AvgPool2d(kernel_size=(1, 4), stride=(1, 4))  # (B,128,32通道,125时间)
+        self.pool=nn.AvgPool2d(kernel_size=(1, 2), stride=(1, 2))  # (B,128,32通道,125时间)
 
 
-    def forward(self, x):  # x: (B, 1000, 32)
-        # x = x.unsqueeze(0) #添加一个batch维度 (B, 32, 1000)
-        x = x.permute(0, 1, 2).unsqueeze(1)  # (B,1,32,1000)
+    def forward(self, x):  # x: (B, 250, 32)
+        # x = x.unsqueeze(0) #添加一个batch维度 (B, 32, 250)
+        x = x.permute(0, 1, 2).unsqueeze(1)  # (B,1,32,250)
 
         x = self.eeg_first_cov(x)
 
@@ -60,7 +60,7 @@ class MutiCovnet(nn.Module):
         b3 = self.branch3(x)
         b4 = self.branch4(x)
 
-        x = torch.cat([b1, b2, b3, b4], dim=1) #(B, 128, 32, 1000)
+        x = torch.cat([b1, b2, b3, b4], dim=1) #(B, 128, 32, 250)
         x = self.conv_fusion(x)
 
         x = self.pool(x)
@@ -89,7 +89,7 @@ class SE_block(nn.Module):
 
 
 class Embedding(nn.Module):
-    def __init__(self, in_channels=32, in_features=128, d_model=256):
+    def __init__(self, in_channels=32, in_features=128, d_model=64):
         super().__init__()
         self.project = nn.Sequential(
             nn.Conv2d(in_channels, d_model, kernel_size=(in_features, 1)),  # 1x1 conv across features
@@ -109,7 +109,7 @@ class Embedding(nn.Module):
 class Muti_Attention(nn.Module):
     def __init__(self,
                  dim, #输入的token维度
-                 num_heads =8, #注意力的头数
+                 num_heads =4, #注意力的头数
                  qkv_bias = False, #生成QKV时是否添加偏置
                  qk_scale=None, #用于缩放QK的系数，如果为None，则使用1/sqrt(embed_dim_pre_head)
                  atte_drop_ration=0.1, #z\注意力分数的dropout的比率，防止过拟合
@@ -150,7 +150,7 @@ class Muti_Attention(nn.Module):
         return x
 
 class Connected_layer(nn.Module):
-    def __init__(self, input_dim=256, hidden_dim=128, output_dim=6):
+    def __init__(self, input_dim=64, hidden_dim=128, output_dim=6):
         super().__init__()
         self.mlp = nn.Sequential(
             nn.LayerNorm(input_dim),
@@ -171,7 +171,7 @@ class EEGTransformerModel(nn.Module):
         self.feature_extractor = MutiCovnet()
         self.SE_block= SE_block()
         self.embedding = Embedding()
-        self.attention = Muti_Attention(dim=256)
+        self.attention = Muti_Attention(dim=64)
         self.coord_regressor = Connected_layer(output_dim=6)
 
     def forward(self, x):  # x: (B, 1024, 32)
@@ -188,8 +188,8 @@ class EEGTransformerModel(nn.Module):
 # # 模型实例
 # model = EEGTransformerModel()
 #
-# # 输入：batch_size = 8 batch，32通道，1000时间点
-# x = torch.randn(8, 32, 500)
+# # 输入：batch_size = 8 batch，32通道，250时间点
+# x = torch.randn(8, 32, 250)
 # out = model(x)
 #
 # print(out.shape)  # (8, 6)
