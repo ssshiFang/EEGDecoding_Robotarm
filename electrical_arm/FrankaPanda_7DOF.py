@@ -33,16 +33,15 @@ def align(eeg, emg, delay=200):
 
 
 def trial_data(have_emg= False, kin_output=False):
-    # 获取当前脚本所在目录
+    # current directory
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    # 获取上一级目录
     parent_dir = os.path.dirname(current_dir)
 
-    # 拼接你想保存的子文件夹路径（如 'processed'）
+    # child document
     save_dir = os.path.join(parent_dir, 'electrical_arm')
 
-    # 数据的加载保存路径
-    eeg_path = os.path.join(save_dir, 'trial_data/4_eeg_arm_trial1.pkl')
+    # data save path
+    eeg_path = os.path.join(save_dir, 'trial_data/4_emg_arm_trial1.pkl')
 
     with open(eeg_path, 'rb') as f:
         trial = pickle.load(f)
@@ -70,19 +69,19 @@ def trial_data(have_emg= False, kin_output=False):
 def EEG_Decoder(eeg_data, emg_data=None, segment_length=250, have_emg=False):
     """
     Using model for decoding
-    eeg_data: (32, T) if have_emg= True emg (5, T)
+    eeg_data: (32, T)  have_emg= True emg (5, T)
     segment_length windows of eeg and kin, emg
     return: (N, 6)
     """
 
-    # 获取当前路径
+    # current directory
     current_dir = os.path.dirname(os.path.abspath(__file__))
     parent_dir = os.path.dirname(current_dir)
 
-    # 模型路径
+    # model directory
     model_path = os.path.join(parent_dir, 'f_model/4_eeg_arm_best_model0.88.pth')
 
-    # 设备选择
+    # device choose
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # load model
@@ -100,10 +99,10 @@ def EEG_Decoder(eeg_data, emg_data=None, segment_length=250, have_emg=False):
         segments.append(chunk)
 
     if T % segment_length != 0:
-        last_chunk = eeg_data[:, -segment_length:]  # 最后一段补足250
+        last_chunk = eeg_data[:, -segment_length:]  # last part 250
         segments.append(last_chunk)
 
-    # 转换为 batch tensor
+    # change to batch tensor
     eeg_batch = torch.tensor(np.stack(segments), dtype=torch.float32).to(device)  # (N, 32, 250)
 
     if have_emg:
@@ -115,10 +114,10 @@ def EEG_Decoder(eeg_data, emg_data=None, segment_length=250, have_emg=False):
             seg.append(cut)
 
         if T % segment_length != 0:
-            last_cut = emg_data[:, -segment_length:]  # 最后一段补足250
+            last_cut = emg_data[:, -segment_length:]  # last part 250
             seg.append(last_cut)
 
-        # 转换为 batch tensor
+        # change to batch tensor
         emg_batch = torch.tensor(np.stack(seg), dtype=torch.float32).to(device)  # (N, 32, 250)
 
         with torch.no_grad():
@@ -128,7 +127,7 @@ def EEG_Decoder(eeg_data, emg_data=None, segment_length=250, have_emg=False):
         return positions
 
 
-    # 分阶段推理
+    # decoding
 
     with torch.no_grad():
         outputs = model(eeg_batch)  # (N, 6)
@@ -137,11 +136,11 @@ def EEG_Decoder(eeg_data, emg_data=None, segment_length=250, have_emg=False):
     return positions
 
 
-# 根据名称 'hand' 查找末端执行器的 body ID
+#  'hand' chech the end-eff body ID
 def find_end_site(model):
     end_effector_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, 'hand')
     if end_effector_id == -1:
-        # 如果未找到指定名称的末端执行器，打印警告信息并终止 GLFW
+        # if not have end-eff
         print("Warning: Could not find the end effector with the given name.")
 
     return end_effector_id
@@ -154,14 +153,14 @@ def limit_angle(angle):
         angle += 2 * np.pi
     return angle
 
-# 映射归一化坐标到机械臂工作空间（这里简单映射，按需调整）
+# normalize to robot arm work place
 def map_workspace(coords):
     coords[:, 1] = 1 - coords[:, 1] # y 1-0 -> 0-1
     workspace_min = np.array([0.3, 0.03, 0.2])
     workspace_max = np.array([0.7, 0.6, 0.55])
     return workspace_min + coords * (workspace_max - workspace_min)
 
-#简单的数值逆运动学（基于雅可比矩阵的伪逆法）
+#simple IK jacobian matrix
 def ik_jacobian(target_pos,
                 target_quat,
                 site_id,
@@ -172,7 +171,7 @@ def ik_jacobian(target_pos,
                 alpha=0.1): # step
     q = data.qpos[:].copy() # site location
 
-    # 获取目标朝向（例如初始朝向）
+    # point to initial
     mujoco.mj_forward(model, data)
     res = np.zeros(3)
 
@@ -188,11 +187,11 @@ def ik_jacobian(target_pos,
         pos_err = target_pos - ee_pos
 
         # condition loss
-        # 使用四元数差异来近似角度误差
+        # quat for pose
         mujoco.mju_subQuat(res, target_quat, ee_quat)
-        quat_err = res  # 返回的是 axis-angle 差异
+        quat_err = res  # axis-angle
 
-        # 拼接误差向量 [位置误差 + 姿态误差]
+        # location+ pos loss
         error = np.concatenate([pos_err, quat_err])
 
         print(f" Error Norm: {np.linalg.norm(error):.4f}")
@@ -201,17 +200,17 @@ def ik_jacobian(target_pos,
         if np.linalg.norm(error) < tol: # distance of two points
             break
 
-        # 雅可比矩阵
+        # jacobian matrix
         jacp = np.zeros((3, model.nv)) # IK运动控制 location
         jacr = np.zeros((3, model.nv)) # 姿态控制
         mujoco.mj_jacSite(model, data, jacp, jacr, site_id)
-        # 拼接为 6xN 的雅可比
+        # 6xN jacobian matrix
         jac_full = np.vstack([jacp, jacr])[:, :model.nv]
 
-        # # 冻结第7个关节（索引为5），将它列设为0
+        # # freeze 7joint index- 5 set0
         # jac_full[:, 6] = 0
 
-        # IK 更新步长
+        # IK update
         dq = alpha * np.linalg.pinv(jac_full) @ error
         q[:model.nv] += dq
 
@@ -233,8 +232,8 @@ def ik_jacobian_position(target_pos,
         data.qpos[:7] = q[:7]
         mujoco.mj_forward(model, data)
 
-        ee_pos = data.site(site_id).xpos  # 当前末端执行器的位置
-        pos_err = target_pos - ee_pos     # 位置误差
+        ee_pos = data.site(site_id).xpos  # end-eff location
+        pos_err = target_pos - ee_pos     # location loss
 
         # print(f"Error Norm: {np.linalg.norm(pos_err):.4f}")
         # print(f"EE Pos: {ee_pos}")
@@ -242,11 +241,11 @@ def ik_jacobian_position(target_pos,
         if np.linalg.norm(pos_err) < tol:
             break
 
-        # 只计算位置的雅可比
+        # jacobian
         jacp = np.zeros((3, model.nv))
         mujoco.mj_jacSite(model, data, jacp, None, site_id)
 
-        # 使用伪逆计算关节更新
+        # update joint
         dq = alpha * np.linalg.pinv(jacp[:, :model.nv]) @ pos_err
         q[:model.nv] += dq
 
@@ -260,15 +259,15 @@ def initial_location(model,
     start_q=numpy.zeros(7)
     initial_q=numpy.array([0,0.1,0,-3,2.9,1.65,-2.4]) # initial [0,0.335,0,-3,2.9,1.4,-2.4,0.02,0.02]
     # initial_q = numpy.array([-0.78, 0.1, 0, -3, 2.9, 1.65, -2.4])
-    # 活动范围 (x,y 0.3 -0.78 平均 0.24 - 0.55 z 0.12 - 0.65)
-    # xy平均-0.782
-    # 2号移动范围 -0.4 - 1.55
-    # 3号移动范围 -1.8 - 1.5
-    # 5号移动范围 2 - 2.9
+    # range (x,y 0.3 -0.78   0.24 - 0.55 z 0.12 - 0.65)
+    # xy equal -0.782
+    # 2 range -0.4 - 1.55
+    # 3 range -1.8 - 1.5
+    # 5 range 2 - 2.9
     # end site location [0.31431234 0.03086261 0.12288893]
 
     initial_q = initial_q.copy()
-    # 设置关节目标位置
+    # joint location
     data.qpos[:7] = initial_q
 
     mujoco.mj_forward(model, data)
@@ -280,10 +279,10 @@ def initial_location(model,
     trajectory = np.linspace(start_q, initial_q[:7], steps)  # zero -> initial
     hold_segment = duration(initial_q, hold_time, model)
 
-    # 拼接完整轨迹
+    # all trajectory
     initial_trajectory = np.vstack((trajectory, hold_segment))  # shape: (N, 7)
 
-    # 打印相关位置
+    # pint location
     # end_effector_id = find_end_site()
     # end_effector_pos = data.body(end_effector_id).xpos
     # print("Actuators in model:", model.nu)
@@ -294,41 +293,21 @@ def initial_location(model,
     # for i in range(model.njnt):
     #     print(f"Joint {i}: name = {model.joint(i).name}, type = {model.joint(i).type}, addr = {model.jnt_qposadr[i]}")
 
-    # mujoco.mj_step(model, data)是执行一次完整的仿真，mujoco.mj_forward(model, data)只是一次派生求解
+    # mujoco.mj_step(model, data)simulation mujoco.mj_forward(model, data)get outcome
 
     return initial_q, target_quat, initial_trajectory
 
 
-# # 轨迹生成，笛卡尔空间插值 + 逆运动学（IK）
-# def linear_interp(start, end, num_steps):
-#     return np.linspace(start, end, num_steps)
-#
-# # 1. 获取当前位置
-# start_pos = sim.data.get_site_xpos("ee_site")  # shape: (3,)
-# goal_pos = np.array([0.5, 0.0, 0.3])            # 示例目标位置
-#
-# # 2. 插值轨迹
-# num_steps = 50
-# traj = linear_interp(start_pos, goal_pos, num_steps)
-#
-# joint_trajectory = []
-#
-# # 3. 对每个插值点做 IK
-# for pos in traj:
-#     # 这里你需要一个 IK 解算器，如 ik_solver.solve(pos)
-#     q = inverse_kinematics(pos)  # shape: (n_joints,)
-#     joint_trajectory.append(q)
-# 插值进行运动轨迹生成
 def generate_joint_trajectory(start, goal, steps):
     return np.linspace(start, goal, steps)
 
 
-# 追加“保持”部分
+# hold part
 def duration(target_q, time_len, model):
-    hold_duration = 2.0  # 停留 1 秒
-    sim_freq = int(1 / model.opt.timestep)  # 通常是 500~1000 Hz，取决于模型
-    hold_steps = int(time_len * sim_freq / 20)  # 降低到 viewer 的视觉频率
-    hold_segment = np.tile(target_q, (hold_steps, 1))  # 重复目标姿态
+    hold_duration = 2.0  # hold time
+    sim_freq = int(1 / model.opt.timestep)  #  500~1000 Hz
+    hold_steps = int(time_len * sim_freq / 20)  # decrease to viewer viusal
+    hold_segment = np.tile(target_q, (hold_steps, 1))  # hold
 
     return hold_segment
 
@@ -342,7 +321,7 @@ def initial(model,data,
     trajectory = np.linspace(start_q, initial_q, steps) # zero -> initial
     hold_segment = duration(initial_q ,hold_time, model)
 
-    # 拼接完整轨迹
+    # get together
     initial_trajectory = np.vstack((trajectory, hold_segment))  # shape: (N, 7)
 
     return initial_trajectory
@@ -359,7 +338,7 @@ def movement(start_q, target_q,
         hold_time = 3.0
         hold_segment = duration(target_q[:7], hold_time, model)
 
-        # 拼接完整轨迹
+        # get together
         finial_trajectory = np.vstack((trajectory, hold_segment))  # shape: (N, 7)
     else:
         finial_trajectory = trajectory
@@ -393,31 +372,6 @@ def trajectory_show(trajectory, model, data, viewer, save_gif, save_path):
         imageio.mimsave(save_path, frames, fps=15)
 
 
-# 解出一个展示一个
-# def process_eeg_trajectory(eeg_data, model, model_data):
-#     start_q, target_quat = initial_location(model, model_data)  # 初始位置和朝向
-#     target_quat_xyzw = np.roll(target_quat, 1)
-#
-#     site_id = model.site("ee_site").id
-#     current_q = start_q.copy()
-#
-#     for i, segment in enumerate(sliding_window(eeg_data, window_size=250, stride=250)):
-#         # Step 1: 解码生成目标位置
-#         target_pos = decode_target(segment)
-#         print(f"[{i}] Target Position:", target_pos)
-#
-#         # Step 2: 利用 IK 获取目标位姿的关节角
-#         q_target = ik_jacobian(target_pos, target_quat, site_id)
-#         q_target[6] = current_q[6]  # 保持某些关节不变（如你已有代码）
-#
-#         # Step 3: 插值并显示
-#         traj = movement(current_q, q_target)
-#         trajectory_show(traj)
-#
-#         # 更新当前位姿
-#         current_q = q_target.copy()
-
-
 def target_compute(positions):
     thumb = positions[:, 0:3]  # shape: (N, 3)
     index = positions[:, 3:6]  # shape: (N, 3)
@@ -431,15 +385,15 @@ def target_compute(positions):
 
 
 def sample_kin_points(kin, start, step):
-    # 确保 kin 是 (6, 4389)
+    # kin type (6, T)
     assert kin.ndim == 2 and kin.shape[0] == 6
 
     end = kin.shape[1]
 
-    # 起始点之后的索引列表：200, 450, 700, ..., up to < end
+    # index 200, 450, 700, ..., up to < end
     indices = list(range(start, end, step))
 
-    # 如果最后一个点不足 step 个也要取
+    # last one get
     if indices[-1] != end - 1:
         indices.append(end - 1)
 
@@ -460,13 +414,13 @@ def draw_trajectory(targets, bounds_min=(0, 0, 0), bounds_max=(0.8, 0.8, 0.8), o
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
 
-    # 绘制轨迹线
+
     ax.plot(x, y, z, color='blue', label='Trajectory')
-    # 绘制起点和终点
+
     ax.scatter(x[0], y[0], z[0], color='green', s=50, label='Start')
     ax.scatter(x[-1], y[-1], z[-1], color='red', s=50, label='End')
 
-    # 设置坐标轴范围
+    # location range
     ax.set_xlim(bounds_min[0], bounds_max[0])
     ax.set_ylim(bounds_min[1], bounds_max[1])
     ax.set_zlim(bounds_min[2], bounds_max[2])
@@ -479,21 +433,20 @@ def draw_trajectory(targets, bounds_min=(0, 0, 0), bounds_max=(0.8, 0.8, 0.8), o
     # ax.set_title("Participant 9 EEG EMG Multi-modality")
     # ax.set_title("Participant 9 Kinematic Trajectory")
     ax.legend()
-    ax.view_init(elev=20, azim=-45)  # 可调视角
+    ax.view_init(elev=20, azim=-45)  # angle view
 
     if output == True:
         # 更新函数
         def update(angle):
-            ax.view_init(elev=30, azim=angle)  # elev=仰角, azim=旋转角度
+            ax.view_init(elev=30, azim=angle)  # elev-z, azim
             return fig,
 
-        # 创建动画（0-360度旋转）
+        # gif
         ani = FuncAnimation(fig, update, frames=np.linspace(0, 360, 240), interval=50, blit=False)
 
-        # 保存为 gif（需要 pillow）
         ani.save('arotation.gif', writer='pillow', fps=10)
 
-        plt.close(fig)  # 生成 gif 后关闭图形
+        plt.close(fig)
 
     else:
         plt.tight_layout()
@@ -533,7 +486,7 @@ def main():
 
     model = mujoco.MjModel.from_xml_path("scene.xml")
     data = mujoco.MjData(model)
-    have_emg=True
+    have_emg=False
     output_kin=False
 
     targets = targets_get(have_emg, output_kin)
@@ -543,64 +496,65 @@ def main():
         while viewer.is_running():
             start_q, target_quat, trajectory_i = initial_location(model, data)
 
-            # target_quat_xyzw = np.roll(target_quat, 1) #初始姿态的四元数组
+            # target_quat_xyzw = np.roll(target_quat, 1) #quat of inital pose
 
-            # 准备轨迹拼接容器
-            full_trajectory = [*trajectory_i]  # 起始轨迹
+            # all trajectory
+            full_trajectory = [*trajectory_i]  # start
 
-            # 设置起点为当前位置
+            # set location
             current_q = start_q
 
             site_id = model.site("ee_site").id
 
-            # 遍历所有目标点，逐个生成轨迹并拼接
+            # all target trajectory
             for target in targets:
                 q_target = ik_jacobian_position(target, site_id, model, data)
 
-                # 从当前关节角度到目标的轨迹
+                # form current join angle to target point
                 trajectory = movement(current_q, q_target, model, steps=50)
 
                 full_trajectory.extend(trajectory)
 
-                current_q = q_target  # 更新当前关节角度为下次轨迹起点
+                current_q = q_target  # update
 
             # trajectory for come into initial
             # final_trajectory = movement(current_q, start_q, model, steps=50)
             # full_trajectory.extend(final_trajectory)
 
-            # 显示整条轨迹
+            # show trajectory
             trajectory_show(np.array(full_trajectory), model, data, viewer, save_gif=False, save_path=save_path)
 
-
-            # # 单目标点轨迹示例
+            # # Example of a single target point trajectory
             # target = np.array([0.5, 0.6, 0.3])
-            # # 计算逆运动学，求机械臂关节角度
+            # # Compute inverse kinematics to get robot joint angles
             # end_effector_id = find_end_site(model)
             # site_id = model.site("ee_site").id
             # q_target = ik_jacobian_position(target, site_id, model, data)
-            # # q_target[6]=start_q[6]
-            #
-            # trajectory = movement(start_q,q_target, model)
+            # # Optionally, set the last joint to start value
+            # # q_target[6] = start_q[6]
+
+            # # Generate movement from start to target joint configuration
+            # trajectory = movement(start_q, q_target, model)
             # full_trajectory = np.vstack((trajectory_i, trajectory))
             # trajectory_show(full_trajectory, model, data, viewer)
 
-            # # 在 viewer 中保持该姿态 5 秒（假设约 60FPS）
+            # # Hold the end-effector at this pose in the viewer for ~5 seconds (assuming ~60FPS)
             # for _ in range(300):
             #     viewer.sync()
 
-            # 初始化轨迹生成
-            # trajectory = initial(model,data)
+            # # Initialize trajectory generation
+            # trajectory = initial(model, data)
             # trajectory_show(trajectory, model, data, viewer)
 
 
 if __name__ == "__main__":
-    # main()
-    have_emg = False
-    output_kin = False
-
-    targets = targets_get(have_emg, output_kin)
-
-    draw_trajectory(targets, output=False)
+    main()
+    # have_emg = False
+    # output_kin = False
+    #
+    # targets = targets_get(have_emg, output_kin)
+    #
+    # draw_trajectory(targets, output=False)
 
 
 

@@ -2,19 +2,18 @@ import torch
 import torch.nn as nn
 
 class EEG_MutiCovnet(nn.Module):
-    def __init__(self): #输入 (32, 250)的EMG数据，输出xyz的坐标
+    def __init__(self):  # Input: EMG data (32, 250), Output: xyz coordinates
         super().__init__()
 
-        # eegnet前特征提取
+        # Initial feature extraction (EEGNet style)
         self.eeg_first_cov = nn.Sequential(
-            # 特征提取
-            nn.Conv2d(1, 16, kernel_size=(1,63),
-                      stride=1, padding=(0,31),bias=False),  # 输出维度 B * 16 * 32 * T
-            nn.BatchNorm2d(16), #批量归一化 tensor处理(1,16,32,1024) 让每一层均值接近零，方差接近1
+            nn.Conv2d(1, 16, kernel_size=(1, 63),
+                      stride=1, padding=(0, 31), bias=False),  # Output: B x 16 x 32 x T
+            nn.BatchNorm2d(16),  # Batch normalization: mean ~0, std ~1
         )
-        # 到此 16 * 32 * T
+        # Output shape: 16 x 32 x T
 
-        # 多分支卷积核卷积，分散的学习每个通道的特征
+        # Multi-branch convolution to learn features from each channel separately
         self.branch1 = nn.Sequential(
             nn.Conv2d(16, 32, kernel_size=(1, 5), padding=(0, 2), bias=False),
             nn.BatchNorm2d(32),
@@ -38,19 +37,18 @@ class EEG_MutiCovnet(nn.Module):
             nn.BatchNorm2d(32),
             nn.ELU()
         )
-        # 4* (32, 32, 1000)
+        # 4 branches output shape: 32 x 32 x 1000 each
 
-        # 将四个分支的输出通道数拼接，32*4=128
+        # Concatenate outputs from four branches along channel dimension (32*4=128)
         self.conv_fusion = nn.Conv2d(128, 128, kernel_size=1, bias=False)
         self.bn_fusion = nn.BatchNorm2d(128)
-        # (32, 4*32, 1000)
+        # Output shape: B x 128 x 32 x 1000
 
-        # 时间轴池化，假设不降采样，或你可以加AvgPool2d降采样
-        self.pool=nn.AvgPool2d(kernel_size=(1, 2), stride=(1, 2))  # (B,128,32通道,125时间)
-
+        # Temporal pooling, can downsample or keep original length
+        self.pool = nn.AvgPool2d(kernel_size=(1, 2), stride=(1, 2))  # Output: B x 128 x 32 x 500
 
     def forward(self, x):  # x: (B, 250, 32)
-        # x = x.unsqueeze(0) #添加一个batch维度 (B, 32, 250)
+        # x = x.unsqueeze(0) # add batch dimision (B, 32, 250)
         x = x.permute(0, 1, 2).unsqueeze(1)  # (B,1,32,250)
 
         x = self.eeg_first_cov(x)
@@ -70,19 +68,18 @@ class EEG_MutiCovnet(nn.Module):
 
 
 class EMG_MutiCovnet(nn.Module):
-    def __init__(self): #输入 (5, 250)的EMG数据，输出xyz的坐标
+    def __init__(self):  # Input: EMG data (5, 250), Output: xyz coordinates
         super().__init__()
 
-        # eegnet前特征提取
+        # Initial feature extraction (EMGNet style)
         self.eeg_first_cov = nn.Sequential(
-            # 特征提取
-            nn.Conv2d(1, 16, kernel_size=(1,63),
-                      stride=1, padding=(0,31),bias=False),  # 输出维度 B * 16 * 5 * T
-            nn.BatchNorm2d(16), #批量归一化 tensor处理(1,16,5,1024) 让每一层均值接近零，方差接近1
+            nn.Conv2d(1, 16, kernel_size=(1, 63),
+                      stride=1, padding=(0, 31), bias=False),  # Output: B x 16 x 5 x T
+            nn.BatchNorm2d(16),  # Batch normalization: mean ~0, std ~1
         )
-        # 到此 16 * 5 * T
+        # Output shape: 16 x 5 x T
 
-        # 多分支卷积核卷积，分散的学习每个通道的特征
+        # Multi-branch convolution to learn features from each channel separately
         self.branch1 = nn.Sequential(
             nn.Conv2d(16, 32, kernel_size=(1, 5), padding=(0, 2), bias=False),
             nn.BatchNorm2d(32),
@@ -106,19 +103,18 @@ class EMG_MutiCovnet(nn.Module):
             nn.BatchNorm2d(32),
             nn.ELU()
         )
-        # 4* (32, 5, 250)
+        # 4 branches output shape: 32 x 5 x 250 each
 
-        # 将四个分支的输出通道数拼接，32*4=128
+        # Concatenate outputs from four branches along channel dimension (32*4=128)
         self.conv_fusion = nn.Conv2d(128, 128, kernel_size=1, bias=False)
         self.bn_fusion = nn.BatchNorm2d(128)
-        # (4*32, 32, 250)
+        # Output shape: B x 128 x 5 x 250
 
-        # 时间轴池化，假设不降采样，或你可以加AvgPool2d降采样
-        self.pool=nn.AvgPool2d(kernel_size=(1, 2), stride=(1, 2))  # (B,128,5通道,125时间)
-
+        # Temporal pooling
+        self.pool = nn.AvgPool2d(kernel_size=(1, 2), stride=(1, 2))  # Output: B x 128 x 5 x 125
 
     def forward(self, x):  # x: (B, 250, 5)
-        # x = x.unsqueeze(0) #添加一个batch维度 (B, 5, 250)
+        # x = x.unsqueeze(0) # add batch dimision (B, 32, 250)
         x = x.permute(0, 1, 2).unsqueeze(1)  # (B, 1, 5, 250)
 
         x = self.eeg_first_cov(x)
@@ -182,7 +178,7 @@ class Embedding(nn.Module):
     def __init__(self, total_channels=37, in_features=128, d_model=256):
         super().__init__()
         self.project = nn.Sequential(
-            nn.Conv2d(total_channels, d_model, kernel_size=(in_features, 1)),  # 融合 EEG + EMG
+            nn.Conv2d(total_channels, d_model, kernel_size=(in_features, 1)),  # fusion EEG + EMG
             nn.ReLU()
         )
 
@@ -204,46 +200,50 @@ class Embedding(nn.Module):
 
 class Muti_Attention(nn.Module):
     def __init__(self,
-                 dim, #输入的token维度
-                 num_heads =8, #注意力的头数
-                 qkv_bias = False, #生成QKV时是否添加偏置
-                 qk_scale=None, #用于缩放QK的系数，如果为None，则使用1/sqrt(embed_dim_pre_head)
-                 atte_drop_ration=0.1, #z\注意力分数的dropout的比率，防止过拟合
-                 proj_drop_ration=0.1 #最终投影曾的dropout的比例
+                 dim,  # input token dimension
+                 num_heads=8,  # number of attention heads
+                 qkv_bias=False,  # add bias when generating Q, K, V
+                 qk_scale=None,  # scaling factor for QK; if None, use 1/sqrt(head_dim)
+                 atte_drop_ration=0.1,  # dropout rate for attention scores
+                 proj_drop_ration=0.1  # dropout rate for output projection
                  ):
         super().__init__()
 
-        self.num_heads=num_heads #注意力头数
-        head_dim = dim//num_heads #每个注意力的维度
-        self.scale = qk_scale or head_dim ** -0.5 #qk的缩放因子
-        self.qkv = nn.Linear(dim,dim*3, bias=qkv_bias) #通过全链接层生成QKV，为了并行计算，提高计算效率，参数更少
-        self.att_drop=nn.Dropout(atte_drop_ration)
-        self.proj_drop=nn.Dropout(proj_drop_ration)
-        #将每个head得到的输出进行concact拼接，然后通过线性变换映射回原本的嵌入维度
-        self.proj=nn.Linear(dim,dim)
+        self.num_heads = num_heads  # number of attention heads
+        head_dim = dim // num_heads  # dimension per head
+        self.scale = qk_scale or head_dim ** -0.5  # scale factor for QK
+        self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)  # generate Q, K, V in one linear layer
+        self.att_drop = nn.Dropout(atte_drop_ration)  # dropout for attention
+        self.proj_drop = nn.Dropout(proj_drop_ration)  # dropout for output
+        self.proj = nn.Linear(dim, dim)  # project concatenated heads back to original dimension
 
-    def forward(self,x):
-        B,N,C = x.shape # batch ,num_patchs+1, embed_dim 这个1为clstoken
-        #B N 3*C -> B N 3 num_heads C//self.num_heads
-        #B N 3 num_heads C//self.num_heads -> 3, B, num_heads,N,C//self_num_heads
-        qkv=self.qkv(x).reshape(B,N,3,self.num_heads,C//self.num_heads).permute(2,0,3,1,4) #方便我们之后做运算
-        #用切片拿到QKV，形状 B, num_heads, N, C//self.num_heads
-        q,k,v = qkv[0],qkv[1],qkv[2]
-        #计算qk的点积， 并进行缩放 得到注意力分数
-        #Q :[B, num_heads, N, C//self.num_heads]
-        #k.transpose(-2,-1) K:[B, num_heads, N, C//self.num_heads] -> [B, num_heads, C//self.numheads, N]
-        attn = (q @ k.transpose(-2,-1))*self.scale #[B, num_heads, N, N]
-        attn = attn.softmax(dim=-1) #对每行进行处理 使得每行的和为1
-        #注意力权重对v进行加权求和
-        #attn @v：B, num_heads, N, C//self.num_heads
-        #transpose: B,N. self.num_heads,C//self.num_heads
-        #reshape: B,N,C,将最后两个维度信息拼接，合并多个头输出，回到总的嵌入维度
-        x=(attn @v).transpose(1,2).reshape(B,N,C)
-        #通过线性变换映射回原本的嵌入dim
-        x=self.proj(x)
-        x=self.proj_drop(x) #防止过拟合
+    def forward(self, x):
+        B, N, C = x.shape  # batch size, number of tokens (including cls token), embedding dimension
+
+        # compute Q, K, V and reshape for multi-head attention
+        # B x N x 3*C -> B x N x 3 x num_heads x head_dim -> 3 x B x num_heads x N x head_dim
+        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
+
+        # split into Q, K, V
+        q, k, v = qkv[0], qkv[1], qkv[2]  # each shape: B x num_heads x N x head_dim
+
+        # compute scaled dot-product attention
+        # Q: [B, num_heads, N, head_dim]
+        # K: [B, num_heads, N, head_dim] -> transpose to [B, num_heads, head_dim, N]
+        attn = (q @ k.transpose(-2, -1)) * self.scale  # shape: B x num_heads x N x N
+        attn = attn.softmax(dim=-1)  # softmax along last dimension (rows sum to 1)
+
+        # apply attention weights to V
+        # attn @ V: B x num_heads x N x head_dim
+        # transpose and reshape to merge heads: B x N x C
+        x = (attn @ v).transpose(1, 2).reshape(B, N, C)
+
+        # project back to original embedding dimension
+        x = self.proj(x)
+        x = self.proj_drop(x)  # dropout to prevent overfitting
 
         return x
+
 
 class Connected_layer(nn.Module):
     def __init__(self, input_dim=256, hidden_dim=128, output_dim=6):
@@ -256,8 +256,8 @@ class Connected_layer(nn.Module):
         )
 
     def forward(self, x):  # x.shape = (B, N, C)
-        x = x.mean(dim=1)  # 或者用 x[:, 0, :] 取第一个token
-        out = self.mlp(x)  # 输出 shape: (B, 6)
+        x = x.mean(dim=1)
+        out = self.mlp(x)  # output shape: (B, 6)
         return out
 
 
@@ -289,10 +289,10 @@ class EEGTransformerModel(nn.Module):
 
 
 
-# # # 模型实例
+# # # model object
 # model = EEGTransformerModel()
 #
-# # 输入：batch_size = 8 batch，32通道，250时间点
+# # input:batch_size = 8 batch，32 channel，250 sampled points
 # x = torch.randn(8, 32, 250)
 # y = torch.randn(8,5,250)
 # out = model(x,y)

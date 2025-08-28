@@ -1,8 +1,8 @@
 import torch
 import torch.nn as nn
-import torch.optim as optim #优化器
-from torch.utils.data import Dataset, DataLoader #数据加载
-from tqdm import tqdm #训练进度条
+import torch.optim as optim #optim
+from torch.utils.data import Dataset, DataLoader #load data
+from tqdm import tqdm #train process
 import os
 from Mix_control_model250 import EEGTransformerModel
 import numpy as np
@@ -107,8 +107,8 @@ class EEGDataset(Dataset):
         eeg_data: shape [N_samples, N_channels, N_times]
         kin_data: shape [N_samples]
         """
-        assert eeg.shape[0] == kin.shape[0], "EEG 和 KIN 数量不一致"
-        assert emg.shape[0] == kin.shape[0], "EMG 和 KIN 数量不一致"
+        assert eeg.shape[0] == kin.shape[0], "EEG and KIN not equal"
+        assert emg.shape[0] == kin.shape[0], "EMG and KIN not equal"
         self.eeg_data = eeg
         self.emg_data = emg
         self.kin_data = kin
@@ -134,14 +134,14 @@ def train(model, train_loader, test_loader, optimizer, criterion, device, num_ep
             eeg_batch, emg_batch, kin_batch = eeg.to(device), emg.to(device), kin.to(device) #将数据传到设备上 (B, 32, T), (B, 6, T)
 
             optimizer.zero_grad()
-            outputs = model(eeg_batch, emg_batch)  # 前向传播获得 (B, 6)
-            kin_last = kin_batch[:, :, -1]  # 当前段内采样的最后一个坐标点
+            outputs = model(eeg_batch, emg_batch)  # (B, 6)
+            kin_last = kin_batch[:, :, -1]  # last sample points
             loss = criterion(outputs, kin_last) #loss compute
-            loss.backward() #反向传播
-            optimizer.step() #更新参数
+            loss.backward() #back transfor
+            optimizer.step() #update
 
             running_loss += loss.item() * eeg_batch.size(0)
-        epoch_loss = running_loss / len(train_loader.dataset)  # 每轮的损失
+        epoch_loss = running_loss / len(train_loader.dataset)  # loss epoch
         val_pcc = evaluate(model, test_loader, device)
         print(
             f"[Epoch {epoch + 1}/{num_epochs}] "
@@ -156,12 +156,12 @@ def train(model, train_loader, test_loader, optimizer, criterion, device, num_ep
 
 
 def evaluate(model, test_loader, device):
-    model.eval()  # 指定模型为验证模式
+    model.eval()  # val
     out_kin = []
-    kin_list = []  # 改名，避免和循环变量冲突
+    kin_list = []
 
     with torch.no_grad():
-        for eeg, emg, kin in test_loader:  # 改变量名
+        for eeg, emg, kin in test_loader:
             eeg_batch, emg_batch, kin_batch = eeg.to(device), emg.to(device), kin.to(device)
 
             outputs = model(eeg_batch, emg_batch)
@@ -170,15 +170,15 @@ def evaluate(model, test_loader, device):
             out_kin.append(outputs)
             kin_list.append(label_last) #[(B.6),(B,6), ]
 
-    preds = torch.cat(out_kin, dim=0)   # N 是整个 test set 的样本数
-    kin_tensor = torch.cat(kin_list, dim=0) # N 是相同数量的真实标签 (128, 6)
+    preds = torch.cat(out_kin, dim=0)   # N predict
+    kin_tensor = torch.cat(kin_list, dim=0) # N (128, 6)
 
     result = pearson_seperate(preds, kin_tensor)  # [px2, py2, pz2, px3, py3, pz3]
 
     return result
 
 
-# 保存模型
+# save model
 def save_model(model, save_path):
     torch.save(model.state_dict(), save_path)
 
@@ -195,7 +195,7 @@ def main():
     criterion = nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
-    # 获取当前脚本所在目录
+    # current directory
     current_dir = os.path.dirname(os.path.abspath(__file__))
     model_dir = os.path.join(current_dir, 'dataset')
 
@@ -210,7 +210,7 @@ def main():
     # save_path_val_eeg = os.path.join(model_dir, 'val/eeg.val')
     # save_path_val_kin = os.path.join(model_dir, 'val/kin.val')
 
-    # 加载数据
+    # load data
     eeg_train = np.load(save_path_train_eeg)
     emg_train = np.load(save_path_train_emg)
     kin_train = np.load(save_path_train_kin)
@@ -224,17 +224,17 @@ def main():
     train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=2)
     test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False, num_workers=2)
 
-    # 开始训练
+    # start train
     train(model, train_loader, test_loader, optimizer, criterion, device, num_epochs)
 
-    # 测试评估
+    # val
     val_pcc = evaluate(model, test_loader, device)
     print( f"PCC - PCC: {val_pcc['pcc']:.4f}, X: {val_pcc['pcc_x']:.4f}, Y: {val_pcc['pcc_y']:.4f}, Z: {val_pcc['pcc_z']:.4f}, RMSE: {val_pcc['rmse']:.4f}")
 
     save_model(model, save_path)
 
 def test():
-    # 获取当前脚本所在目录
+    # current directory
     current_dir = os.path.dirname(os.path.abspath(__file__))
     data_dir=os.path.join(current_dir, 'dataset')
     model_dir = os.path.join(current_dir, 'f_model/5_EMG_best_model0.94_t250_s50_w200.pth')
@@ -258,7 +258,7 @@ def test():
 
     result = evaluate(model, val_loader, device)
 
-    print("验证结果（Pearson correlation）：", result)
+    print("outcome（Pearson correlation）：", result)
 
 
 
@@ -266,13 +266,13 @@ def test():
 if __name__ == "__main__":
     main()
 
-    # #pcc 测试
+    # #pcc test
     # x = torch.randn(128, 6)
     # y = torch.randn(128, 6)
     # result=pearson_seperate(x,y)
     #
     # print(result)
 
-    # val测试
+    # val test
     # test()
 

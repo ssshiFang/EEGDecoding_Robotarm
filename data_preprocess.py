@@ -10,21 +10,22 @@ from scipy.signal import butter, sosfiltfilt, resample_poly
 def kin_process(kin_vector):
     kin_list=[]
     for i in range(0,len(kin_vector[0])):
-        # print(KIN[0][i].shape) #运动数据
-        #获得P2 P3的三维数据
-        # kin_selected_data = KIN[0][i][:, 18:30]  # shape: [T, 6]，对应 P2 和 P3 的 xyz
-        # # print(KIN[0][0][100])  # 第100帧的所有45通道数据
-        #
-        # # 提取 P2 (1, 5, 9) 和 P3 (2, 6, 10)
-        # kin_p2_p3 = kin_selected_data[:, [1, 5, 9, 2, 6, 10]]  # shape: (T, 6)
-        #
-        # p2 = kin_p2_p3[:, :3]
-        # p3 = kin_p2_p3[:, 3:]
+        # print(KIN[0][i].shape)  # motion data
 
-        #获得P2 P3的三维数据
+        # Get 3D data of P2 and P3
+        # kin_selected_data = KIN[0][i][:, 18:30]  # shape: [T, 6], corresponds to xyz of P2 and P3
+        # # print(KIN[0][0][100])  # all 45 channels at frame 100
+
+        # # Extract P2 (channels 1, 5, 9) and P3 (channels 2, 6, 10)
+        # kin_p2_p3 = kin_selected_data[:, [1, 5, 9, 2, 6, 10]]  # shape: (T, 6)
+
+        # p2 = kin_p2_p3[:, :3]  # xyz of P2
+        # p3 = kin_p2_p3[:, 3:]  # xyz of P3
+
+        # Get 3D coordinates of P2 and P3
         kin_p2_p3 = kin_vector[0][i][:, [19, 23, 27, 20, 24, 28]]  # shape: (T, 6) (px2, py2, pz2, px3, py3, pz3)
 
-        # 对每一列进行 min-max 归一化
+        # min-max
         kin_p2_p3_norm = (kin_p2_p3 - kin_p2_p3.min(axis=0)) / (kin_p2_p3.max(axis=0) - kin_p2_p3.min(axis=0) + 1e-8)
 
         kin_list.append(kin_p2_p3_norm.T)
@@ -38,7 +39,7 @@ def data_preprocess(data):
     ws_obj = my_data[0, 0]
 
     names_obj = ws_obj['names']
-    # print(names_obj[0,0].dtype.names) #('eeg', 'kin', 'emg')分别的位置信息
+    # print(names_obj[0,0].dtype.names) #('eeg', 'kin', 'emg')location
     eeg_channel_names = names_obj['eeg']
     eeg_channel_ch_names = [ch[0] for ch in eeg_channel_names[0][0][0]]
 
@@ -62,9 +63,8 @@ def arm_trial(data, have_emg, trial_num):
     my_data = data['ws'] # data saved here
     ws_obj = my_data[0, 0]
 
-    #获得传感器的位置信息
     names_obj = ws_obj['names']
-    # print(names_obj[0,0].dtype.names) #('eeg', 'kin', 'emg')分别的位置信息
+    # print(names_obj[0,0].dtype.names) #('eeg', 'kin', 'emg')location
     eeg_channel_names = names_obj['eeg']
     eeg_channel_ch_names = [ch[0] for ch in eeg_channel_names[0][0][0]]
 
@@ -88,7 +88,7 @@ def arm_trial(data, have_emg, trial_num):
         emg_5_channel=None
 
     kin_p2_p3 = KIN[0][trial_num][:, [19, 23, 27, 20, 24, 28]]
-    # 对每一列进行 min-max 归一化
+    #  min-max
     kin_p2_p3_norm = (kin_p2_p3 - kin_p2_p3.min(axis=0)) / (kin_p2_p3.max(axis=0) - kin_p2_p3.min(axis=0) + 1e-8)
     kin_p2_p3_norm = kin_p2_p3_norm.T
 
@@ -198,51 +198,53 @@ def plot_pre_post_comparison(raw, raw_clean, ch_idx=0):
     plt.show()
 
 
-# ISA分析
+# ISA analysis
 def eeg_esi_process(raw_data, channel_names):
-    fs = 500  # sample rate
+    fs = 500  # sampling rate
 
-    # create info object
+    # Create info object
     ch_names = channel_names
     ch_types = ['eeg'] * 32
     info = mne.create_info(ch_names=ch_names, sfreq=fs, ch_types=ch_types)
 
-    # shape (n_channels, n_times)
+    # Transpose data to shape (n_channels, n_times)
     raw_data_T = raw_data.T
 
-    # create RawArray object
+    # Create RawArray object
     raw = mne.io.RawArray(raw_data_T, info)
 
-    # 设置标准电极布局（解决 No digitization points）
+    # Set standard electrode layout (fixes "No digitization points" issue)
     raw.set_montage('standard_1020')
 
-    # 1.IIR filiter
+    # 1. IIR filter
     raw.filter(0.1, 40., fir_design='firwin', phase='zero',
                l_trans_bandwidth=0.05, h_trans_bandwidth=2.5)
 
-    # 2.common average referencing (CAR)
-    raw.set_eeg_reference('average', projection=False)  # 不用投影矩阵，直接应用 CAR
+    # 2. Common average referencing (CAR)
+    raw.set_eeg_reference('average', projection=False)  # apply CAR directly, without projection matrix
 
-    # 3.ICA
+    # 3. ICA (Independent Component Analysis)
     ica = mne.preprocessing.ICA(n_components=15, method='fastica', random_state=42)
     ica.fit(raw)
 
-    # 可视化用于手动判断眼动伪迹
-    ica.plot_components()        # 查看哪些成分可能是伪迹
-    ica.plot_sources(raw)        # 查看各独立成分的时间序列
+    # Visualize components for manual identification of eye-movement artifacts
+    ica.plot_components()        # see which components might be artifacts
+    ica.plot_sources(raw)        # see time series of each independent component
 
-    # 假设你找到第0号和第2号是伪迹（实际需人工判断）
+    # Suppose components 0 and 2 are artifacts (manual inspection required)
     ica.exclude = [0, 2]
 
-    # 应用 ICA 修正
+    # Apply ICA to remove selected artifacts
     raw_clean = ica.apply(raw.copy())
 
-    plot_pre_post_comparison(raw, raw_clean, ch_idx=0)  # 可视化
+    # Visualize before and after ICA for the first channel
+    plot_pre_post_comparison(raw, raw_clean, ch_idx=0)
 
     return raw_clean
 
 
-# 假设 raw_data 为你的原始 EEG 信号: shape (4907, 32)
+
+# EEG shape (T, 32)
 def eeg_process(raw_data, channel_names):
     fs = 500  # sample rate
 
@@ -257,7 +259,7 @@ def eeg_process(raw_data, channel_names):
     # create RawArray object
     raw = mne.io.RawArray(raw_data_T, info)
 
-    # 设置标准电极布局（解决 No digitization points）
+    # normal po location
     raw.set_montage('standard_1020')
 
     # 1.IIR filiter
@@ -513,7 +515,7 @@ def check_single_pkl_file(pkl_path, expected_channels=32):
                 print(f"trial {i} not have shape")
 
 
-# 用于机械臂控制的eegdata生成
+# eeg data for robot arm
 def main2():
     # location
     current_dir = os.path.dirname(os.path.abspath(__file__))
